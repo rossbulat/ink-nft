@@ -19,6 +19,13 @@ enum Event {
         to: Option<AccountId>,
         token_id: u64,
     },
+    /// Emits when an approved address for an NFT is changed or re-affirmed.
+    Approval {
+        owner: AccountId,
+        spender: AccountId,
+        token_id: u64,
+        approved: bool,
+    },
 }
 
 /// Deposits an NFToken event.
@@ -32,11 +39,13 @@ contract! {
         /// Total tokens minted
         owner: storage::Value<AccountId>,
         /// Mapping: token_id(u64) -> owner (AccountID)
-        id_to_owner: storage::HashMap<Balance, AccountId>,
+        id_to_owner: storage::HashMap<u64, AccountId>,
         /// Mapping: owner(AccountID) -> tokenCount (Balance)
         owner_to_token_count: storage::HashMap<AccountId, Balance>,
         /// Total tokens minted
-        total_minted: storage::Value<Balance>,
+        total_minted: storage::Value<u64>,
+        /// Mapping: token id to AccountId
+        approvals: storage::HashMap<u64, AccountId>,
     }
 
     /// compulsary Demploy method
@@ -81,6 +90,43 @@ contract! {
             self.transfer_impl(env.caller(), to, token_id)
         }
 
+        /// Transfers a token_id from a specified address to another specified address
+        pub(external) fn transfer_from(&mut self, to: AccountId, token_id: u64) -> bool {
+            env.println(&format!(
+                "NFToken::transfer_from(from = {:?}, to = {:?}, token_id = {:?})",
+                env.caller(), to, token_id
+            ));
+
+            // make the transfer immediately if caller is the owner
+            if self.is_token_owner(&env::caller(), token_id) {
+                env.println(&format!("approval: Caller is the owner, send immdeiately"));
+                let result = self.transfer_impl(env::caller(), to, token_id);
+                return result;
+
+            // not owner: check if caller is approved to move the token
+            } else {
+
+                env.println(&format!("approval: Caller is not the owner, needs to be approved."));
+                let approval = self.approvals.get(&token_id);
+                if let None = approval {
+                    env.println(&format!("approval: No approvals exist, returning now."));
+                    return false;
+                }
+
+                //carry out transfer if caller is approved
+                if *approval.unwrap() == env.caller() {
+                    env.println(&format!("approval: Found approval is the caller - make transfer"));
+                    // carry out the actual transfer
+                    let result = self.transfer_impl(env.caller(), to, token_id);
+                    return result;
+                } else {
+
+                    env.println(&format!("approval: Found approval is not the caller - returning now"));
+                    return false;
+                }
+            }
+        }
+
         /// Mints a specified amount of new tokens to a given address
         pub(external) fn mint(&mut self, to: AccountId, value: Balance) -> bool {
             env.println(&format!(
@@ -89,6 +135,59 @@ contract! {
             ));
             // carry out the actual minting
             self.mint_impl(env.caller(), value)
+        }
+
+         /// Approves or disapproves an Account to send token on behalf of an owner
+        pub(external) fn approval(&mut self, to: AccountId, token_id: u64, approved: bool) -> bool {
+            env.println(&format!(
+                "NFToken::approval(account = {:?}, token_id: {:?}, approved = {:?})",
+                to, token_id, approved
+            ));
+
+            // return if caller is not the token owner
+            let token_owner = self.id_to_owner.get(&token_id);
+            if let None = token_owner {
+                env.println(&format!("approval: Could not find token owner"));
+                return false;
+            }
+
+            let token_owner = *token_owner.unwrap();
+            if token_owner != env::caller() {
+                env.println(&format!("approval: Not token owner"));
+                return false;
+            }
+
+            let approvals = self.approvals.get(&token_id);
+
+            // insert approval if
+            if let None = approvals {
+                if approved == true {
+                    env.println(&format!("approval: Approval does not exist. Inserting now"));
+                    self.approvals.insert(token_id, to);
+                } else {
+                    env.println(&format!("NFToken::approval: Approval does not exist. nothing to remove"));
+                    return false;
+                }
+
+            } else {
+                let existing = *approvals.unwrap();
+
+                // remove existing owner if disapproving
+                if existing == to && approved == false {
+                    env.println(&format!("approval: Approved account exists. Removing now"));
+                    self.approvals.remove(&token_id);
+                }
+
+                // overwrite or insert if approving is true
+                if approved == true {
+                    env.println(&format!("approval: Inserting or overwriting approval"));
+                    self.approvals.insert(token_id, to);
+                }
+            }
+
+            env.println(&format!("approval: Emitting approval event"));
+            Self::emit_approval(&self, env::caller(), to, token_id, approved);
+            true
         }
     }
 
@@ -119,6 +218,19 @@ contract! {
         ) {
             assert!(value > 0);
             deposit_event(Event::Mint { owner, value });
+        }
+
+        /// Emits an approval event.
+        fn emit_approval(
+            &self,
+            owner: AccountId,
+            spender: AccountId,
+            token_id: u64,
+            approved: bool,
+        ) {
+            assert_ne!(owner, spender);
+            assert!(token_id > 0);
+            deposit_event(Event::Approval { owner, spender, token_id, approved });
         }
 
         fn is_token_owner(&self, of: &AccountId, token_id: u64) -> bool {
@@ -204,6 +316,8 @@ mod tests {
         let mut _nftoken = NFToken::deploy_mock(100);
         let alice = AccountId::try_from([0x0; 32]).unwrap();
         let bob = AccountId::try_from([0x1; 32]).unwrap();
+        let charlie = AccountId::try_from([0x2; 32]).unwrap();
+        let dave = AccountId::try_from([0x3; 32]).unwrap();
 
         let total_minted = _nftoken.total_minted();
         assert_eq!(total_minted, 100);
@@ -216,5 +330,18 @@ mod tests {
 
         assert_eq!(alice_balance, 99);
         assert_eq!(bob_balance, 1);
+
+        // approve charlie to send token_id 2 from alice's account
+        _nftoken.approval(charlie, 2, true);
+
+        // overwrite charlie's approval with dave's approval
+        _nftoken.approval(dave, 2, true);
+
+        // remove dave from approvals
+        _nftoken.approval(dave, 2, false);
+
+        // transfer_from function: caller is token owner
+        _nftoken.approval(charlie, 3, true);
+        _nftoken.transfer_from(bob, 3);
     }
 }
