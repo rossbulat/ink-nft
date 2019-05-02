@@ -1,3 +1,7 @@
 # ink! Non Fungible Token
 
-A bare-bones Non-Fungible Token implemented in ink!
+### A bare-bones non-fungible token implemented in ink!
+
+<img src="https://jkrb.co/misc/nftoken_ink.png" width="400" />
+
+Coming soon...
