@@ -1,3 +1,9 @@
+// Copyright 2017-2019 JKRB Investments Limited.
+// This file is part of ink!.
+//
+// You should have received a copy of the GNU General Public License
+// along with this file.  If not, see <http://www.gnu.org/licenses/>.
+
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
 use ink_core::{
