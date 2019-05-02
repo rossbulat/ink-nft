@@ -57,7 +57,7 @@ contract! {
     /// compulsary Demploy method
     impl Deploy for NFToken {
         /// Initializes our initial total minted value to 0.
-        fn deploy(&mut self, init_value: Balance) {
+        fn deploy(&mut self, init_value: u64) {
             self.total_minted.set(0);
             // set ownership of contract
             self.owner.set(env::caller());
@@ -134,7 +134,7 @@ contract! {
         }
 
         /// Mints a specified amount of new tokens to a given address
-        pub(external) fn mint(&mut self, to: AccountId, value: Balance) -> bool {
+        pub(external) fn mint(&mut self, to: AccountId, value: u64) -> bool {
             env.println(&format!(
                 "NFToken::mint(to = {:?}, value = {:?})",
                 to, value
@@ -283,7 +283,7 @@ contract! {
         }
 
         /// minting of new tokens implementation
-        fn mint_impl(&mut self, receiver: AccountId, value: Balance) -> bool {
+        fn mint_impl(&mut self, receiver: AccountId, value: u64) -> bool {
             env::println(&format!(
                 "NFToken::mint_impl(receiver = {:?}, value = {:?})",
                 receiver, value
