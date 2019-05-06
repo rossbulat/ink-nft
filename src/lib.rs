@@ -288,7 +288,7 @@ contract! {
                 receiver, value
             ));
 
-            let start_id = self.total_minted + 1;
+            let start_id = *self.total_minted + 1;
             let stop_id = *self.total_minted + value;
 
             // loop through new tokens being minted
