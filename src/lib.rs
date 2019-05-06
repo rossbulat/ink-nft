@@ -92,20 +92,20 @@ contract! {
             ));
 
             // carry out the actual transfer
-            self.transfer_impl(env::caller(), to, token_id)
+            self.transfer_impl(env.caller(), to, token_id)
         }
 
         /// Transfers a token_id from a specified address to another specified address
         pub(external) fn transfer_from(&mut self, to: AccountId, token_id: u64) -> bool {
             env.println(&format!(
                 "NFToken::transfer_from(from = {:?}, to = {:?}, token_id = {:?})",
-                env::caller(), to, token_id
+                env.caller(), to, token_id
             ));
 
             // make the transfer immediately if caller is the owner
-            if self.is_token_owner(&env::caller(), token_id) {
+            if self.is_token_owner(&env.caller(), token_id) {
                 env.println(&format!("approval: Caller is the owner, send immdeiately"));
-                let result = self.transfer_impl(env::caller(), to, token_id);
+                let result = self.transfer_impl(env.caller(), to, token_id);
                 return result;
 
             // not owner: check if caller is approved to move the token
@@ -119,10 +119,10 @@ contract! {
                 }
 
                 //carry out transfer if caller is approved
-                if *approval.unwrap() == env::caller() {
+                if *approval.unwrap() == env.caller() {
                     env.println(&format!("approval: Found approval is the caller - make transfer"));
                     // carry out the actual transfer
-                    let result = self.transfer_impl(env::caller(), to, token_id);
+                    let result = self.transfer_impl(env.caller(), to, token_id);
                     return result;
                 } else {
 
@@ -139,7 +139,7 @@ contract! {
                 to, value
             ));
             // carry out the actual minting
-            self.mint_impl(env::caller(), value)
+            self.mint_impl(env.caller(), value)
         }
 
          /// Approves or disapproves an Account to send token on behalf of an owner
@@ -157,7 +157,7 @@ contract! {
             }
 
             let token_owner = *token_owner.unwrap();
-            if token_owner != env::caller() {
+            if token_owner != env.caller() {
                 env.println(&format!("approval: Not token owner"));
                 return false;
             }
@@ -191,7 +191,7 @@ contract! {
             }
 
             env.println(&format!("approval: Emitting approval event"));
-            Self::emit_approval(&self, env::caller(), to, token_id, approved);
+            Self::emit_approval(&self, env.caller(), to, token_id, approved);
             true
         }
     }
