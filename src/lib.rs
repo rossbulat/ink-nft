@@ -41,15 +41,15 @@ fn deposit_event(event: Event) {
 contract! {
     /// Storage values of the contract
     struct NFToken {
-        /// Total tokens minted
+        /// Owner of contract
         owner: storage::Value<AccountId>,
+        /// Total tokens minted
+        total_minted: storage::Value<u64>,
         /// Mapping: token_id(u64) -> owner (AccountID)
         id_to_owner: storage::HashMap<u64, AccountId>,
         /// Mapping: owner(AccountID) -> tokenCount (Balance)
         owner_to_token_count: storage::HashMap<AccountId, Balance>,
-        /// Total tokens minted
-        total_minted: storage::Value<u64>,
-        /// Mapping: token id to AccountId
+        /// Mapping: token_id(u64) to account(AccountId)
         approvals: storage::HashMap<u64, AccountId>,
     }
 
