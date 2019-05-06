@@ -62,7 +62,7 @@ contract! {
             self.owner.set(env::caller());
             // mint initial tokens
             if init_value > 0 {
-              self.mint_impl(env.caller(), init_value);
+              self.mint_impl(env::caller(), init_value);
             }
         }
     }
@@ -92,14 +92,14 @@ contract! {
             ));
 
             // carry out the actual transfer
-            self.transfer_impl(env.caller(), to, token_id)
+            self.transfer_impl(env::caller(), to, token_id)
         }
 
         /// Transfers a token_id from a specified address to another specified address
         pub(external) fn transfer_from(&mut self, to: AccountId, token_id: u64) -> bool {
             env.println(&format!(
                 "NFToken::transfer_from(from = {:?}, to = {:?}, token_id = {:?})",
-                env.caller(), to, token_id
+                env::caller(), to, token_id
             ));
 
             // make the transfer immediately if caller is the owner
@@ -119,10 +119,10 @@ contract! {
                 }
 
                 //carry out transfer if caller is approved
-                if *approval.unwrap() == env.caller() {
+                if *approval.unwrap() == env::caller() {
                     env.println(&format!("approval: Found approval is the caller - make transfer"));
                     // carry out the actual transfer
-                    let result = self.transfer_impl(env.caller(), to, token_id);
+                    let result = self.transfer_impl(env::caller(), to, token_id);
                     return result;
                 } else {
 
@@ -139,7 +139,7 @@ contract! {
                 to, value
             ));
             // carry out the actual minting
-            self.mint_impl(env.caller(), value)
+            self.mint_impl(env::caller(), value)
         }
 
          /// Approves or disapproves an Account to send token on behalf of an owner
@@ -288,7 +288,7 @@ contract! {
                 receiver, value
             ));
 
-            let start_id = *self.total_minted + 1;
+            let start_id = self.total_minted + 1;
             let stop_id = *self.total_minted + value;
 
             // loop through new tokens being minted
