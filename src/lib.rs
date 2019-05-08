@@ -303,27 +303,23 @@ mod tests {
 
         // approve charlie to send token_id 2 from alice's account
         _nftoken.approval(charlie, 2, true);
-
-        // get_token_approval()
-        // assert result
+        assert_eq!(_nftoken.is_approved(2, charlie), true);
 
         // overwrite charlie's approval with dave's approval
         _nftoken.approval(dave, 2, true);
-
-        // get_token_approval()
-        // assert result
+        assert_eq!(_nftoken.is_approved(2, dave), true);
 
         // remove dave from approvals
         _nftoken.approval(dave, 2, false);
-
-        // get_token_approval()
-        // assert result
+        assert_eq!(_nftoken.is_approved(2, dave), false);
 
         // transfer_from function: caller is token owner
         _nftoken.approval(charlie, 3, true);
-        _nftoken.transfer_from(bob, 3);
+        assert_eq!(_nftoken.is_approved(3, charlie), true);
 
+        _nftoken.transfer_from(bob, 3);
         bob_balance = _nftoken.balance_of(bob);
+
         assert_eq!(bob_balance, 2);
     }
 }
