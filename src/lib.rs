@@ -16,7 +16,7 @@ use parity_codec::{Decode, Encode};
 #[derive(Encode, Decode)]
 enum Event {
     /// Emits when the owner of the contract mints tokens
-    Mint { owner: AccountId, value: Balance },
+    Mint { owner: AccountId, value: u64 },
     /// Emits when a transfer has been made.
     Transfer {
         from: Option<AccountId>,
@@ -187,7 +187,7 @@ contract! {
         /// Emits a minting event
         fn emit_mint(
             owner: AccountId,
-            value: Balance,
+            value: u64,
         ) {
             assert!(value > 0);
             deposit_event(Event::Mint { owner, value });
