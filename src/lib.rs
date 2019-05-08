@@ -6,7 +6,7 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
 use ink_core::{
-    env::{self, AccountId, Balance},
+    env::{self, AccountId},
     storage,
 };
 use ink_lang::contract;
@@ -16,7 +16,7 @@ use parity_codec::{Decode, Encode};
 #[derive(Encode, Decode)]
 enum Event {
     /// Emits when the owner of the contract mints tokens
-    Mint { owner: AccountId, value: Balance },
+    Mint { owner: AccountId, value: u64 },
     /// Emits when a transfer has been made.
     Transfer {
         from: Option<AccountId>,
@@ -46,8 +46,8 @@ contract! {
         total_minted: storage::Value<u64>,
         /// Mapping: token_id(u64) -> owner (AccountID)
         id_to_owner: storage::HashMap<u64, AccountId>,
-        /// Mapping: owner(AccountID) -> tokenCount (Balance)
-        owner_to_token_count: storage::HashMap<AccountId, Balance>,
+        /// Mapping: owner(AccountID) -> tokenCount (u64)
+        owner_to_token_count: storage::HashMap<AccountId, u64>,
         /// Mapping: token_id(u64) to account(AccountId)
         approvals: storage::HashMap<u64, AccountId>,
     }
@@ -76,7 +76,7 @@ contract! {
         }
 
         /// Return the balance of the given address.
-        pub(external) fn balance_of(&self, owner: AccountId) -> Balance {
+        pub(external) fn balance_of(&self, owner: AccountId) -> u64 {
             let balance = *self.owner_to_token_count.get(&owner).unwrap_or(&0);
             balance
         }
@@ -187,7 +187,7 @@ contract! {
         /// Emits a minting event
         fn emit_mint(
             owner: AccountId,
-            value: Balance,
+            value: u64,
         ) {
             assert!(value > 0);
             deposit_event(Event::Mint { owner, value });
