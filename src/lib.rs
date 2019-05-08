@@ -59,10 +59,10 @@ contract! {
         fn deploy(&mut self, init_value: u64) {
             self.total_minted.set(0);
             // set ownership of contract
-            self.owner.set(env::caller());
+            self.owner.set(env.caller());
             // mint initial tokens
             if init_value > 0 {
-              self.mint_impl(env::caller(), init_value);
+              self.mint_impl(env.caller(), init_value);
             }
         }
     }
@@ -359,6 +359,6 @@ mod tests {
         _nftoken.transfer_from(bob, 3);
 
         bob_balance = _nftoken.balance_of(bob);
-        assert_eq!(bob_balance, 1);
+        assert_eq!(bob_balance, 2);
     }
 }
