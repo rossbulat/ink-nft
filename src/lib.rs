@@ -69,6 +69,19 @@ contract! {
     /// Public methods
     impl NFToken {
 
+        // Returns whether an account is approved to send a token
+        pub(external) fn is_approved(&self, token_id: u64, approved: AccountId) -> bool {
+            let approval = self.approvals.get(&token_id);
+            if let None = approval {
+                return false;
+            }
+            if *approval.unwrap() == approved {
+                return true;
+            }
+            false
+        }
+
+
         /// Return the total amount of tokens ever minted
         pub(external) fn total_minted(&self) -> u64 {
             let total_minted = *self.total_minted;
