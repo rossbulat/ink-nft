@@ -6,7 +6,7 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
 use ink_core::{
-    env::{self, AccountId, Balance},
+    env::{self, println, AccountId, Balance},
     memory::format,
     storage,
 };
@@ -73,20 +73,20 @@ contract! {
         /// Return the total amount of tokens ever minted
         pub(external) fn total_minted(&self) -> Balance {
             let total_minted = *self.total_minted;
-            env.println(&format!("NFToken::total_minted = {:?}", total_minted));
+            println(&format!("NFToken::total_minted = {:?}", total_minted));
             total_minted
         }
 
         /// Return the balance of the given address.
         pub(external) fn balance_of(&self, owner: AccountId) -> Balance {
             let balance = *self.owner_to_token_count.get(&owner).unwrap_or(&0);
-            env.println(&format!("NFToken::balance_of(owner = {:?}) = {:?}", owner, balance));
+            println(&format!("NFToken::balance_of(owner = {:?}) = {:?}", owner, balance));
             balance
         }
 
         /// Transfers a token_id to a specified address from the caller
         pub(external) fn transfer(&mut self, to: AccountId, token_id: u64) -> bool {
-            env.println(&format!(
+            println(&format!(
                 "NFToken::transfer(to = {:?}, token_id = {:?})",
                 to, token_id
             ));
@@ -97,36 +97,36 @@ contract! {
 
         /// Transfers a token_id from a specified address to another specified address
         pub(external) fn transfer_from(&mut self, to: AccountId, token_id: u64) -> bool {
-            env.println(&format!(
+            println(&format!(
                 "NFToken::transfer_from(from = {:?}, to = {:?}, token_id = {:?})",
                 env.caller(), to, token_id
             ));
 
             // make the transfer immediately if caller is the owner
             if self.is_token_owner(&env.caller(), token_id) {
-                env.println(&format!("approval: Caller is the owner, send immdeiately"));
+                println(&format!("approval: Caller is the owner, send immdeiately"));
                 let result = self.transfer_impl(env.caller(), to, token_id);
                 return result;
 
             // not owner: check if caller is approved to move the token
             } else {
 
-                env.println(&format!("approval: Caller is not the owner, needs to be approved."));
+                println(&format!("approval: Caller is not the owner, needs to be approved."));
                 let approval = self.approvals.get(&token_id);
                 if let None = approval {
-                    env.println(&format!("approval: No approvals exist, returning now."));
+                    println(&format!("approval: No approvals exist, returning now."));
                     return false;
                 }
 
                 //carry out transfer if caller is approved
                 if *approval.unwrap() == env.caller() {
-                    env.println(&format!("approval: Found approval is the caller - make transfer"));
+                    println(&format!("approval: Found approval is the caller - make transfer"));
                     // carry out the actual transfer
                     let result = self.transfer_impl(env.caller(), to, token_id);
                     return result;
                 } else {
 
-                    env.println(&format!("approval: Found approval is not the caller - returning now"));
+                    println(&format!("approval: Found approval is not the caller - returning now"));
                     return false;
                 }
             }
@@ -134,7 +134,7 @@ contract! {
 
         /// Mints a specified amount of new tokens to a given address
         pub(external) fn mint(&mut self, to: AccountId, value: u64) -> bool {
-            env.println(&format!(
+            println(&format!(
                 "NFToken::mint(to = {:?}, value = {:?})",
                 to, value
             ));
@@ -144,7 +144,7 @@ contract! {
 
          /// Approves or disapproves an Account to send token on behalf of an owner
         pub(external) fn approval(&mut self, to: AccountId, token_id: u64, approved: bool) -> bool {
-            env.println(&format!(
+            println(&format!(
                 "NFToken::approval(account = {:?}, token_id: {:?}, approved = {:?})",
                 to, token_id, approved
             ));
@@ -152,13 +152,13 @@ contract! {
             // return if caller is not the token owner
             let token_owner = self.id_to_owner.get(&token_id);
             if let None = token_owner {
-                env.println(&format!("approval: Could not find token owner"));
+                println(&format!("approval: Could not find token owner"));
                 return false;
             }
 
             let token_owner = *token_owner.unwrap();
             if token_owner != env.caller() {
-                env.println(&format!("approval: Not token owner"));
+                println(&format!("approval: Not token owner"));
                 return false;
             }
 
@@ -167,10 +167,10 @@ contract! {
             // insert approval if
             if let None = approvals {
                 if approved == true {
-                    env.println(&format!("approval: Approval does not exist. Inserting now"));
+                    println(&format!("approval: Approval does not exist. Inserting now"));
                     self.approvals.insert(token_id, to);
                 } else {
-                    env.println(&format!("NFToken::approval: Approval does not exist. nothing to remove"));
+                    println(&format!("NFToken::approval: Approval does not exist. nothing to remove"));
                     return false;
                 }
 
@@ -179,18 +179,18 @@ contract! {
 
                 // remove existing owner if disapproving
                 if existing == to && approved == false {
-                    env.println(&format!("approval: Approved account exists. Removing now"));
+                    println(&format!("approval: Approved account exists. Removing now"));
                     self.approvals.remove(&token_id);
                 }
 
                 // overwrite or insert if approving is true
                 if approved == true {
-                    env.println(&format!("approval: Inserting or overwriting approval"));
+                    println(&format!("approval: Inserting or overwriting approval"));
                     self.approvals.insert(token_id, to);
                 }
             }
 
-            env.println(&format!("approval: Emitting approval event"));
+            println(&format!("approval: Emitting approval event"));
             Self::emit_approval(&self, env.caller(), to, token_id, approved);
             true
         }
@@ -245,7 +245,7 @@ contract! {
             }
             let owner = *owner.unwrap();
 
-            env::println(&format!(
+            println(&format!(
                 "NFToken:: owner of token id {:?}: {:?}",
                 token_id, owner
             ));
