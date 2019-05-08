@@ -6,8 +6,7 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
 use ink_core::{
-    env::{self, println, AccountId, Balance},
-    memory::format,
+    env::{self, AccountId, Balance},
     storage,
 };
 use ink_lang::contract;
@@ -209,11 +208,6 @@ contract! {
                 return false;
             }
             let owner = *owner.unwrap();
-
-            println(&format!(
-                "NFToken:: owner of token id {:?}: {:?}",
-                token_id, owner
-            ));
             if owner != *of {
                 return false;
             }
