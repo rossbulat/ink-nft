@@ -113,9 +113,13 @@ contract! {
         }
 
         /// Mints a specified amount of new tokens to a given address
-        pub(external) fn mint(&mut self, value: u64) -> bool {
+        pub(external) fn mint(&mut self, to: AccountId, value: u64) -> bool {
+            if env.caller() != *self.owner {
+                return false;
+            }
+
             // carry out the actual minting
-            self.mint_impl(env.caller(), value)
+            self.mint_impl(to, value)
         }
 
          /// Approves or disapproves an Account to send token on behalf of an owner
@@ -235,6 +239,7 @@ contract! {
 
         /// minting of new tokens implementation
         fn mint_impl(&mut self, receiver: AccountId, value: u64) -> bool {
+
             let start_id = *self.total_minted + 1;
             let stop_id = *self.total_minted + value;
 
