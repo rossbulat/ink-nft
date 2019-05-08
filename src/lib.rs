@@ -70,7 +70,7 @@ contract! {
     impl NFToken {
 
         /// Return the total amount of tokens ever minted
-        pub(external) fn total_minted(&self) -> Balance {
+        pub(external) fn total_minted(&self) -> u64 {
             let total_minted = *self.total_minted;
             total_minted
         }
