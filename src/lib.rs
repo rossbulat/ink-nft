@@ -315,7 +315,7 @@ mod tests {
     use std::convert::TryFrom;
 
     #[test]
-    fn deployment() {
+    fn it_works() {
 
         // deploying and minting initial tokens
         let mut _nftoken = NFToken::deploy_mock(100);
@@ -331,7 +331,7 @@ mod tests {
         _nftoken.transfer(bob, 1);
 
         let alice_balance = _nftoken.balance_of(alice);
-        let bob_balance = _nftoken.balance_of(bob);
+        let mut bob_balance = _nftoken.balance_of(bob);
 
         assert_eq!(alice_balance, 99);
         assert_eq!(bob_balance, 1);
@@ -339,14 +339,26 @@ mod tests {
         // approve charlie to send token_id 2 from alice's account
         _nftoken.approval(charlie, 2, true);
 
+        // get_token_approval()
+        // assert result
+
         // overwrite charlie's approval with dave's approval
         _nftoken.approval(dave, 2, true);
+
+        // get_token_approval()
+        // assert result
 
         // remove dave from approvals
         _nftoken.approval(dave, 2, false);
 
+        // get_token_approval()
+        // assert result
+
         // transfer_from function: caller is token owner
         _nftoken.approval(charlie, 3, true);
         _nftoken.transfer_from(bob, 3);
+
+        bob_balance = _nftoken.balance_of(bob);
+        assert_eq!(bob_balance, 1);
     }
 }
