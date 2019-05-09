@@ -580,22 +580,219 @@ Self::emit_approval(&self, env.caller(), to, token_id, approved);
 true
 ```
 
+## Testing Ink Contracts
 
+Testing an Ink smart contract can (and should) be done both off-chain and on-chain. The prior can be done via a `tests` module within the contract itself, and the latter on a local Substrate dev chain.
 
+Your first means of testing an Ink contract is via the `tests` module under your `contract!` macro. The boilerplate looks like the following:
 
+```
+// test function boilerplate
 
+#[cfg(all(test, feature = "test-env"))]
+mod tests {
+   
+   use super::*;
+   use std::convert::TryFrom;
+   #[test]
+   fn it_works() {
+      // test function...
+   }
+}
+```
 
+The test functions are wrapped in a separate `tests` module, that import everything from the parent module and thus knows about everything about the smart contract in question. Let’s break down some of the more ambiguous lines of code, starting with the top `cfg` flag.
 
+```
+// config flag to only compile in a test environment
 
+#[cfg(all(test, feature = "test-env"))]
+```
 
+Tests are not compiled with the smart contract — they would take up unnecessary space on chain. We’ve also included two `use` statements within the `tests` module:
 
+```
+// use everything from super module (the smart contract)
+use super::*;
 
+// use the TryFrom trait - allowing safe type conversions
+use std::convert::TryFrom;
+```
 
+The first line, `super::*` is quite self explanatory; the `tests` module needs to be aware of the smart contract it is testing, so everything is bought into scope with `*` from the parent module — the smart contract itself. The second argument brings the `TryFrom` trait into scope.
 
+The `TryFrom` trait implements simple and safe type conversions that may fail in a controlled way under some circumstances.
 
+We use the `try_from()` method, derived from the `TryFrom` trait, to try to obtain `AccountId` addresses for use in our testing. This is in fact the first thing we do within the `it_works()` test after initialising a contract instance:
 
+```
+#[test]
+fn it_works() {
+   
+   // initialise a contract instance to test
+   let mut _nftoken = NFToken::deploy_mock(100);
+   
+   // try to obtain alice's account
+   let alice = AccountId::try_from([0x0; 32]).unwrap();
+   ...
+}
+```
 
+An `AccountId` in Substrate consists of 32 characters, therefore Alice’s address is simply declared as 32 zeros. The account is unwrapped to obtain the actual address from either a `Result` or `Error` enum.
 
+A `#[test]` statement exists before the function definition; this is Rust syntax that lets the compiler know we intend this function to be a test function. VS Code will embed a test button under each function that is labelled as a test in this way — but clicking this button to invoke `cargo test` will fail, as we need a slightly modified test command to test Ink contracts. We will visit that command further down.
 
+Within `it_works()`, we initialise a mutable instance of the contract using `deploy_mock()`, a mock deployment function provided by the Ink framework. The contract can now be called and manipulated via the `_nftoken` variable. `deploy_mock()` will call the contract’s `deploy()` method — which expects an init_value argument — so the value of `100` has been provided, consequently minting 100 tokens at test runtime.
 
+### Using Assertions in Tests
 
+From here the rest of `it_works()` is simple to follow. We have taken advantage of Rust’s assertion macros to ensure that our contract’s state is changing as we expect when transferring tokens and approving other accounts to send tokens.
+
+Rust includes three assertion macros available for us to use in the standard library:
+
+```
+// assert! - true or false
+assert!(some_expression());
+
+// assert_eq! - asserts that 2 expressions are equal
+assert_eq!(a, b, "Testing if {} and {} match", a, b);
+
+// assert_ne! - asserts that 2 expressions are not equal
+assert_ne!(a, b, "Testing that a and b are not equal");
+```
+
+Where an assertion fails, the test function will also fail and be reported as a failure once the tests complete. to test our Ink contract we run the following command:
+
+```
+cargo test --features test-env -- --nocapture
+```
+
+Using `--no-capture` will provide more verbose output, including `println()` output where it has been used within the tests module. The `test-env` *feature* ensures that we are only testing the Ink environment, as defined in `Cargo.toml`:
+
+```
+[features]
+default = []
+test-env = [
+    "ink_core/test-env",
+    "ink_model/test-env",
+    "ink_lang/test-env",
+]
+...
+```
+
+A successful test will result in the following output:
+
+<img src="https://cdn-images-1.medium.com/max/1600/1*8bVYa4RlS1olsu1x98Kv8w.jpeg" />
+
+### Compiling the contract
+
+With tests passing, we can now compile the contract. Run `build.sh` within the project directory to do so:
+
+```
+./build.sh
+```
+
+The resulting files will be sitting in your `target/` folder:
+
+```
+nftoken.wat
+nftoken-fixed.wat
+nftoken.wasm
+nftoken-opt.wasm
+nftoken-pruned.wasm
+NFToken.json
+```
+
+Ink contracts are compiled into the web binary standard WebAssembly, or `.wasm`. We are interested in two files from the above compiled output that we will upload to Substrate:
+
+* `nftoken-pruned.wasm`: an optimised `.wasm` file we’ll upload to our Substrate chain
+* `NFToken.json`: the contract ABI code in JSON format
+
+*__Note__: Although we are not WebAssembly focussed, it is worth mentioning that the format is being heavily used in the blockchain space for a more efficient runtime. Ethereum 2.0 will rely on a subset of WebAssembly they have dubbed eWasm, and of course, Substrate chains are also adopting the standard. Although primarily aimed for the web, WebAssembly is by no means limited to the browser. The WebAssembly spec is under development and we can expect more features to be released in the coming years, making it a very interesting technology to work with.*
+
+You may be familiar with contract ABI from Ethereum based contracts, that provide front-end Dapps the means to communicate to the contract on-chain. They essentially describe the structure of the contract including its functions and variables within a JSON object, making it particularly simple for Javascript based apps to integrate.
+
+Now, to deploy the contract, spin up your local Substrate chain if you have not done so already, and let’s turn to the Polkadot JS app to manage our deployment.
+
+```
+# run your local Substrate chain
+
+substrate --dev
+```
+
+### Deploying Ink Contracts
+
+Deploying and instantiating a contract on a Substrate chain involves firstly deploying the contract, and then instantiating it. This two step process allows developers to deploy a particular standard — perhaps a token standard — where other interested parties could then instantiate that same contract with their own token details. This removes the need to upload duplicates of the same contract for essentially identical functionality and identical ABI code.
+
+To reiterate, this two step process involves:
+
+* Uploading the contract onto a Substrate chain
+* Instantiating the contract, which can then be interacted with
+
+Both these tasks can be achieved via the Polkadot JS app, an open source Typescript and React based project [available on Github](https://github.com/polkadot-js/apps).
+
+#### Polkadot JS
+
+Now we’ll be uploading our compiled `.wasm` and `.json` ABI to a Substrate dev chain. To do so, the Polkadot JS client is needed.
+
+You can either clone the project to run on your local machine, or simply visit [https://polkadot.js.org/apps](https://github.com/polkadot-js/apps) to access it online. Load up the client to commence the deployment process that follows.
+
+__Step 1: Ensure the client is connected to your local Substrate node__
+
+We firstly need to ensure that the client is connected to the correct chain. Navigate to the `Settings` tab and ensure that the `remote node/endpoint to connect to` is set to `Local Node (127.0.0.1:9944)`. Hit `Save and Reload` if a change is needed.
+
+*__Note__: The other chains, `Alexander` and `Emberic Elm`, are Substrate based chains that are managed by Parity. Working with other Substrate chains such as Polkadot is out of the scope of this article, however, the Pokakdot JS client is actually designed to work with __any__ Substrate based blockchain, and therefore is extremely dynamic in what is presented throughout the app.*
+
+__Step 2: Deploy the compiled contract onto your node__
+
+To deploy our contract, navigate to the `Contracts` page from the side bar, and ensure you are on the `Code` tab. If you have not yet deployed a contract onto your node, the `Code` tab will be the only one available. The UI will be similar to the following:
+
+<img src="https://cdn-images-1.medium.com/max/1600/1*drfJKzgQKxhJbHloRsh4JQ.png" />
+
+Now on the Code tab:
+
+* Ensure the `deployment account` is set to `ALICE`. Alice will have a sufficient balance for us to deploy, instantiate and test the contract
+* Drag `nftoken-pruned.wasm` onto the `compiled contract WASM` field
+* Optional: Amend the `code bundle name` value for a more human-friendly name
+* Drag `NFToken.json` onto the `contract ABI` field
+* Set the `maximum gas allowed` to 500,000 to ensure that we supply enough gas to process the transaction
+
+Once configured, hit `Deploy` and then confirm once again. The transactions will take place and the contract will be deployed.
+
+__Step 3: Instantiating the contract__
+
+You will now notice that two additional tabs are available, `Instance` and `Call`. We will firstly use the `Instance` tab to instantiate the contract, then the `Call` tab to test our functions. The `Instance` tab will resemble something similar to the following:
+
+<img src="https://cdn-images-1.medium.com/max/1600/1*1uiRyKqUIQXcDSNGYs4c9g.png" />
+
+Within the Instance tab:
+
+* Check the `code for this contract` value is pointing to your deployed contract
+* Set an initial token amount to be minted as the `initValue` value.
+
+*__Note__: The Polkadot UI is now picking up on our contract structure, and specifically the arguments that need to be supplied for the deploy function we defined for the contract, including the expected data type. This is one example of the dynamic nature of the Polkadot UI and how its designed to cater for a wide-range of contract types.*
+
+* Set the `endowment` value to 1,000 to ensure the new contract account is minted with some value. This is an advised value from the official Ink docs. Like Ethereum contracts, Ink contracts are deployed to a separate address with their own unique `AccountId` and balance.
+* Again, set the `maximum gas allowed` to 500,000 to ensure that we supply enough gas for the transaction
+* Hit `Initiate` and confirm to carry out the transaction
+
+Upon a successful transaction, the contract will now be instantiated and functions callable.
+
+__Step 4: Calling functions from instantiated contract__
+
+Our final job is now to ensure that functions are working as expected. You will notice that all the `pub(external)` functions we defined in the contract are now available to call and test within the `Call` tab:
+
+<img src="https://cdn-images-1.medium.com/max/1600/1*mV7xhVDyFko4fFtTN7eS4w.png" />
+
+Polkadot JS does not yet provide feedback from calls in the client itself, but your node feed in your terminal should reflect the transactions as new blocks are validated. What we have in terms of UX now are success or failure event notifications that pop up on the top right of your browser window as a function call is processed.
+
+*__Note__: Feedback mechanisms will be posted here as and when they become available, either on the command line or in the Polkadot JS client.*
+
+## Summary
+
+We have completed the Ink smart contract deployment journey, from Installation to Instantiation on chain. As a brief summary, let’s visit the various pieces that made the process possible:
+
+* Bootstrapping of the basic `Flipper` Ink contract to obtain the Ink boilerplate, including environment configuration and `build.sh` file
+* Writing the NFToken contract adhering to Rust concepts and conventions, with minting, transferring and approval functionalities, along with event emission
+* Testing via the `tests` module, before compiling the contract with `build.sh`
+* Deploying, instantiating and testing function calls via the Polkadot JS client, connected to your local Substrate dev chain
