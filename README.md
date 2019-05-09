@@ -10,7 +10,9 @@
 
 [Part 3 now published](https://medium.com/block-journal/deploying-an-ink-smart-contract-to-a-substrate-chain-f52a2a36efec) @ The Block Journal on Medium
 
-### ink!: Substrate’s smart contract language
+# Tutorial
+
+## ink!: Substrate’s smart contract language
 
 Parity’s Substrate blockchain framework, of which Polkadot is being built on top of, is in active development and making rapid progress towards a final release. Ink (or ink! as the name is commonly termed in documentation) is Parity’s solution to writing smart contracts for a Substrate based blockchain.
 
@@ -239,6 +241,344 @@ Again, we have separated our private and public functions in separate `impl` blo
 
 As the last building block of our contract, a `tests` module is defined that asserts various conditions as our functions are tested. Within the `tests` module, we can test our contract logic without having to compile and deploy it to a Substrate chain, allowing speedy ironing out of bugs and verification that the contract works as expected.
 
+## Contract syntax in depth
+
+To review, the structure of an Ink contract, is as follows:
+
+```
+// Ink smart contract structure
+module declarations
+event definitions
+contract macro
+   struct containing contract variables
+   deploy function
+   public methods 
+   private methods
+tests
+```
+
+Let’s explore how these sections are implemented in more detail.
+
+### Module Declarations
+
+Ink does not rely on the Rust standard library — instead, we import Ink modules to code all our contract logic. Let’s take a quick look at what we are importing into our smart contract:
+
+```
+use ink_core::{
+   env::{self, AccountId},
+   memory::format,
+   storage,
+};
+use ink_lang::contract;
+use parity_codec::{Decode, Encode};
+```
+
+We are exposing which modules need to be used in our smart contract here, importing the `ink_core` vital modules of `storage` and `memory`, as well as some `env` objects, exposing critical data such as the caller of an address. In addition, `Encode` and `Decode` have been declared from `parity_codec` to be used for encoding events into a raw format.
+
+### Module Declaration
+
+You will also notice the following before our module declarations:
+
+```
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
+```
+
+This line is declaring that we are using the standard library if we run the tests module, or if we use a std feature flag within our code. Otherwise the contract will always compile with `no_std`. Ink contracts do not utilise the Rust standard library, so it is omitted from compilation unless we explicitly define it not to.
+
+### Event Definitions
+
+Events, that can also be thought of as blockchain notifications, are an important aspect of smart contracts; they proactively emit data when something happens, allowing Dapps to react to them in a real-time manner. As such, our NFToken contract has defined 3 events; `Mint`, `Transfer` and `Approval`.
+
+They are defined before our `contract!` macro. The `Mint` event expects an `AccountId` and `u64` value to be provided when we call, or *emit*, an event:
+
+```
+enum Event {
+   Mint { owner: AccountId, value: u64 },
+}
+```
+
+The `AccountId` type is provided by Ink core; if you recall the previous section, we imported both types via destructuring syntax from the `env` module within `ink_core`. `AccountId` represents an account (the equivalent of Ethereum’s `address` type. Another type that is available, `Balance`, is a `u64` type, or a 64 bit unsigned integer.
+
+*__Note__: We could have use the Balance type in place of u64 to represent token values here. Although it is preferable that the Balance type be used with token values, I experienced some ambiguity working with the type, where the compiled contract did not like addition of u64 values to Balance values. It is conceivable that Balance will be enhanced in the future as Ink is further developed, providing more attributes that further represent a balance, such as the type of units. Balance will be implemented in the NFToken contract once the ambiguity surrounding its usage is cleared up.*
+
+We have also defined a private `deposit_event` function below our event definitions:
+
+```
+// Deposits an NFToken event.
+
+fn deposit_event(event: Event) {
+    env::deposit_raw_event(&event.encode()[..])
+}
+```
+
+This is just a convenience function that wraps Inks provided `deposit_raw_event` function, expecting an encoded event as its only argument.
+
+*__Note__: Notice there is no semi-colon after the `env::deposit_raw_event` function call? In Rust, omitting the semi-colon from the last expression of a function __returns__ the result of that expression, removing the need to write `return`, although it is perfectly valid to do so if you’d like to return further up the function.*
+
+### A note on Rust’s ownership mechanism
+
+Another important Rust (and therefore Ink) programming concept to understand is that of ownership. Our `deposit_event` function utilises ownership. Take a look at `&` used before the `event` argument in `env::deposit_raw_event`:
+
+```
+env::deposit_raw_event(&event.encode()[..])
+                       ^
+                       we are referencing `event` here
+```
+
+In Rust, `&` represents a reference to an object.
+
+Had we not used a reference, `env::deposit_raw_event` would take ownership of `event`, and thus would no longer be available to use in `deposit_event()`. `event` would “move” into the containing function, and would no longer be in scope in the outer function. If we attempted to use `event` after this point, we would receive an error , as event would no longer exist in that scope.
+
+Even though our `deposit_event()` function only has one line of code, and therefore moving `event` out of scope would have no impact of the rest of the function, `env::deposit_raw_event` actually expects a reference. Take a look at the error we receive when removing the reference:
+
+<img src="https://cdn-images-1.medium.com/max/1600/1*jt0_REp-_Omt5JLPqz4Lpg.png" />
+
+The editor is extremely helpful when dealing with Rust ownership, and will ensure that you iron out ownership issues before attempting to compile the program. In this case, it actually tells us how to fix this error under the help section.
+
+To read more about Rust ownership, The Rust Book has a great section explaining the concepts; it is advised to understand Rust ownership before endeavouring into Ink smart contract programming.
+
+With our events defined (and the helper function for emitting those events), let’s now explore the contents of the `contract!` macro itself.
+
+### Contract Variables
+
+Contract variables can be thought of as class properties that are accessed within functions via `self`. Here are the contract variables of our NFToken contract:
+
+```
+struct NFToken {
+   /// owner of the contract
+   owner: storage::Value<AccountId>,
+    
+   /// total tokens minted
+   total_minted: storage::Value<u64>,
+   
+   /// mapping of token id -> token owner
+   id_to_owner: storage::HashMap<u64, AccountId>,
+  
+   /// mapping of token owner -> amount of tokens they are holding
+   owner_to_token_count: storage::HashMap<AccountId, u64>,
+  
+   /// mapping of token id -> approved account
+   approvals: storage::HashMap<u64, AccountId>,
+}
+```
+
+The first two variables are of type `storage::Value`, and the following three of `storage::HashMap`. In fact, the `ink_core` `storage` module has to be used for any contract data we wish to persist on chain.
+
+`storage` types are generic, and as such we explicitly provide the type of data we are storing, in angle brackets.
+
+With the required contract data defined, let’s explore some of the contract implementation, highlighting some key logic and syntax.
+
+### Deployment
+
+The deploy function is compulsory in any Ink contract, and is called when instantiating a contract once it is deployed to a chain.
+
+Wrap the `deploy()` function within an `impl Deploy for <contract_name>` block. The actual implementation of deploy is very straight forward; here it is in its entirety:
+
+```
+impl Deploy for NFToken {
+   fn deploy(&mut self, init_value: u64) {
+       
+      // set initial total minted tokens to 0
+      self.total_minted.set(0);
+     
+      // set the contract owner to the caller
+      self.owner.set(env::caller());
+       
+      // if initial token value provided, call the minting function
+      if init_value > 0 {
+         self.mint_impl(env::caller(), init_value);
+      }
+   }
+}
+```
+
+We are simply setting default values here, with the addition of some initial token minting. We will explore the minting implementation next.
+
+### Minting Implementation
+
+Minting is the process of generating new tokens. For our NFToken contract the following conditions need to be met for minting:
+
+* Each token must have a unique index represented by a `token_id`
+* An `AccountId` to mint the tokens to needs to be provided
+* Only the contract owner can mint new tokens
+
+The public function `mint()` is declared to handle calls to mint tokens:
+
+```
+// mint function signature
+
+pub(external) fn mint(
+   &mut self, 
+   value: u64) -> bool {
+}
+```
+
+Mint accepts two arguments; the account to mint tokens to, and an amount of tokens to be minted. The first parameter to our function signature is *always a reference to `self`*. In addition we can also include `mut` to declare that `self` can be updated, essentially providing a mutable reference to the contract instance.
+
+`mint()` calls the private `mint_impl()` function, that carries out the actual minting process. This pattern of exposing a private function via a public one is also consistent for transferring and approving.
+
+`mint_impl()` will carry out the following tasks:
+
+* Work out the first new `token_id` and the last `token_id` to be minted. This is calculated based on the `self.total_minted` contract variable.
+
+* We define a for loop that will increment token ids and insert each one into the `self.id_to_owner` hash map. The specific syntax for this loop is interesting, adopting a `for in` structure, and adopting a spread operator:
+
+```
+for token_id in start_id..stop_id {
+   self.id_to_owner.insert(token_id, receiver);
+   //                      ^         ^
+   //                      new id    owner of the token
+}
+```
+
+Ink’s implementation of `HashMap` closely mirrors that of the standard Rust implementation. `insert()` will add a new record to our mapping. Check out the full reference [here](https://paritytech.github.io/ink/pdsl_core/storage/struct.HashMap.html) for all the ways we can manipulate a `HashMap`.
+
+#### A note on dereferencing, with *
+
+To obtain the raw value of our contract variables we need to “dereference” them. The concept of dereferencing is explained in detail [here](https://doc.rust-lang.org/book/ch15-02-deref.html#following-the-pointer-to-the-value-with-the-dereference-operator) in The Rust Book, but essentially dereferencing allows us get to an underlying value of a pointer or a reference.
+
+Let’s take a look at how we calculate `start_id` inside `mint_impl()` as an example of where dereferencing has been used:
+
+<img src="https://cdn-images-1.medium.com/max/1600/1*j3KxsIc2kM_Dpp4YcWeH_w.png" />
+
+Hovering over `self.total_minted` reveals that we need to dereference `storage::Value` to obtain the underlying `u64` value. Like referencing, the editor is intelligent enough to realise when an expression does not make sense — e.g. trying to add `1` to a `storage::Value` object, that would result in an error.
+
+Even though dereferencing may not be suggested as a fix, it should be obvious to the programmer once the error is pointed out in the editor.
+
+#### Back to minting implementation
+
+Once the new tokens have been assigned to `id_to_owner`, the `owner_to_token_count` mapping is also updated reflecting the new amount of tokens the owner has. In addition, `total_minted` is also updated to reflect the newly minted tokens.
+
+You may have noticed the way we update the `owner_to_token_count` hash map may be slightly confusing upon first inspection. Here are the lines of code that do so:
+
+```
+// get the current owner count if it exists
+let from_owner_count = *self.owner_to_token_count.get(&self.owner).unwrap_or(&0);
+
+// insert new token count, or overwrite if self.owner exists already
+self.owner_to_token_count.insert(*self.owner, from_owner_count + value);
+```
+
+The first line of code attempts to retrieve an existing token count from the hash map with `get()`, or assign a value of 0 to `from_owner_count` if none are found. The next line should be familiar, where we use `insert()` to either insert a new record or overwrite an existing one.
+
+But what does `unwrap_or()` actually do? Well, instead of returning the token count itself, `get()` actually returns an `Option` enum, which we can then unwrap in the event a value exists. In the event a value does not exist, we can provide an alternative value, as an argument of `unwrap_or()`, which is 0 in the above case.
+
+Let’s briefly explore this concept further; not only it is used in other areas of the contract, `Option` it is a fundamental design pattern in Rust.
+
+#### Understanding the Rust Option enum
+
+As we have determined already, fetching values from `HashMap` contract variables will actually result in an `Option` enum. The `Option` enum in Rust provides two possible values: `Some` or `None`. This essentially avoids `null` values, returning `None` in the case a value does not exist.
+
+Now, a common convention used in our NFToken smart contract is to firstly check if a value exists within a `HashMap`, and returning false in some cases where a `None` option is returned. In the case a `Some` value is present, we then use an unwrap modifier on the `Option` value to obtain the value that `Some` is wrapping.
+
+The `is_token_owner()` function is one example that adheres to this pattern:
+
+```
+// attempt to get a value from the mapping
+let owner = self.id_to_owner.get(&token_id);
+
+// if a None option is fetched, return false
+if let None = owner {
+   return false;
+}
+
+// must be Some option - unwrap (and dereference) value
+let owner = *owner.unwrap();
+```
+
+Instead of using `unwrap_or()` such as in the previous example, `unwrap()` simply assumes that `owner` is a `Some` option; we have already dealt with the case that owner is a `None` value, so it is safe to assume that a `Some` value exists to unwrap.
+
+To conclude `is_token_owner()`, we then check to see if the retrieved token owner matches the `AccountId` we provided in the function call:
+
+```
+   ...
+   // return false if owner does not match provided account
+   if owner != *of {
+      return false;
+   }
+   // owner must be `of`, return true
+   return true;
+}
+```
+
+#### Back to minting implementation
+
+We have now covered the majority of `mint_impl()`. The last line of the function emits an event, which we have defined as a private function:
+
+```
+Self::emit_mint(receiver, *self.total_minted);
+```
+
+Our private event emitting functions simply check whether the values passed in are valid, via assertions, and then call the `deposit_event()` function we declared earlier.
+
+Our minting implementation has introduced us to the concepts and conventions used within the rest of the contract implementation. Let’s visit the transfer function text.
+
+### Transferring Implementation
+
+The transferring of tokens is arguably the most important feature of our contract, allowing us to transfer tokens to and from accounts. The public `transfer()` function is available to send transfer requests to, and has the following signature:
+
+```
+pub(external) fn transfer(
+   &mut self, 
+   to: AccountId, 
+   token_id: u64) -> bool {
+}
+```
+
+This function calls the private `transfer_impl()` function to carry out the actual transferring logic. It ensures the following conditions are met for transferring:
+
+* We immediately check if the caller is the token owner, and return false if not
+* The `id_to_token` mapping is updated, overwriting the value of the `token_id` index to the new owner’s account
+* Token counts are updated, decreasing the senders’ count and increasing the receivers’ count
+* The `Transfer` event is emitted via `emit_transfer()`
+
+Arguably a simpler function than the minting process, this transfer implementation allows tokens to be sent on an individual basis. The underlying mechanism here is simply to update the `id_to_owner` mapping, keeping track of who owns what. From here, the sender and receiver `owner_to_token_count` records are also updated to keep track of tokens owned on an individual account basis.
+
+The last feature of NFToken is the ability to approve another account to send a token on your behalf. Let’s see how that works.
+
+### Approving Implementation
+
+Approvals are a mechanism by which a token owner can assign someone else to transfer a token on their behalf. In order to do so, an additional function has been implemented specifically for approving or disapproving an account for a particular `token_id`.
+
+*__Note__: The contract is currently limited to one approval per token until the Ink language is further developed.*
+
+The public `approvals()` function accepts three arguments when being called:
+
+* The `token_id` we are adding or removing an approval to
+* The `AccountId` we wish to approve or disapprove
+* An `approved` boolean, indicating whether we wish to approve or disapprove the `AccountId`
+
+The signature of `approvals()` looks like the following:
+
+```
+pub(external) fn approval(
+   &mut self, 
+   to: AccountId, 
+   token_id: u64, 
+   approved: bool) -> bool {
+}
+```
+
+The approval process boils down to the following logic, ensuring that only the token owner can make the approval, and that the approval can successfully be inserted or removed:
+
+* We firstly check whether an owner for the token exists, via the `id_to_owner` mapping. A `None` value here will suggest the token does not exist, in which case we exit the function.
+* With a token successfully fetched, we then check whether the caller (`env.caller()`), is indeed the owner of the token we’re configuring the approval for. If not, we exit the function, returning false once again.
+* Next, we attempt to get an existing approval record:
+
+```
+// returns an Option of either Some or None
+
+let approvals = self.approvals.get(&token_id);
+```
+
+* __If an approval record does not exist__, we then refer to `approved` to see if the caller intended to either approve or disapprove the provided account. If the caller did wish to approve, the provided account is added to approvals. If not, there will be nothing to remove as the record was not found — we return false.
+* __If an approval record exists__, the value is unwrapped with `unwrap()`, and we again check the intention of the caller. If a disapproval was intended, we remove the record from `approvals` via the HashMap `remove()` method. On the other hand, we insert the record again, overwriting the existing record, in the event the caller intended to insert (or update) the approval.
+* Finally, the `Approval` event is emitted and we return `true`:
+
+```
+Self::emit_approval(&self, env.caller(), to, token_id, approved);
+true
+```
 
 
 
