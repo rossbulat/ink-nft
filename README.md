@@ -81,12 +81,6 @@ Below is an abstraction of how the NFToken contract is structured:
 use parity::<module>
 ...
 
-//define events
-enum Event {
-   Mint { owner: AccountId, value: u64 },
-}
-...
-
 //wrap entire contract inside the contract! macro
 contract! {
    
@@ -100,6 +94,10 @@ contract! {
    impl Deploy for NFToken {
       fn deploy(&mut self, init_value: u64){}
    }
+   
+   // define events
+   event EventMint { owner: AccountId, value: u64 } 
+   ...
    
    // public contract methods in an impl{} block
    impl NFToken {
@@ -144,17 +142,11 @@ interface ContractName {
    using AddressUtils for address;
 }
 ```
-* Events are declared inside an `Event` enum, whereas with Solidity we define our events separately, typing each as an `event`:
+* Events are declared inside the `!contract` macro, whereas with Solidity we define our events within a contract interface, typing each as an `event`:
 
 ```
 // Ink
-enum Event {
-   Transfer { 
-      from: AccountId, 
-      to: AccountId, 
-      token_id: u64 
-   },
-}
+event Transfer { from: AccountId, to: AccountId, token_id: u64 }
 
 // Solidity
 event Transfer(
@@ -163,23 +155,19 @@ event Transfer(
    uint256 indexed _tokenId
 );
 ```
-* Where a Solidity contract is embedded within an `interface` block, an Ink contract is embedded within a `contract!` macro. Our events are declared outside of this macro, whereas events are declared within a Solidity interface. This is described below.
+* Where a Solidity contract is embedded within an `interface` block, an Ink contract is embedded within a `contract!` macro. Our events are declared inside of this macro, whereas events are declared within a Solidity interface. This is described below.
 
 *__Note__: A [macro](https://doc.rust-lang.org/book/macros.html) in Rust is a a declaration that represents a block of syntax that the wrapped expressions will be surrounded by. Macros abstract at a syntactic level, so the `contract!` macro is wrapping its contents with more syntax.*
 
 ```
 // Ink
-
-// events
 contract! {
-   // rest of contract
+   // contract
 }
 
 // Solidity
-
 interface ContractName {
-   // events
-   // rest of contract
+   // contract
 }
 ```
 
@@ -285,44 +273,21 @@ You will also notice the following before our module declarations:
 
 This line is declaring that we are using the standard library if we run the tests module, or if we use a std feature flag within our code. Otherwise the contract will always compile with `no_std`. Ink contracts do not utilise the Rust standard library, so it is omitted from compilation unless we explicitly define it not to.
 
-### Event Definitions
-
-Events, that can also be thought of as blockchain notifications, are an important aspect of smart contracts; they proactively emit data when something happens, allowing Dapps to react to them in a real-time manner. As such, our NFToken contract has defined 3 events; `Mint`, `Transfer` and `Approval`.
-
-They are defined before our `contract!` macro. The `Mint` event expects an `AccountId` and `u64` value to be provided when we call, or *emit*, an event:
-
-```
-enum Event {
-   Mint { owner: AccountId, value: u64 },
-}
-```
-
 The `AccountId` type is provided by Ink core; if you recall the previous section, we imported both types via destructuring syntax from the `env` module within `ink_core`. `AccountId` represents an account (the equivalent of Ethereum’s `address` type. Another type that is available, `Balance`, is a `u64` type, or a 64 bit unsigned integer.
 
 *__Note__: We could have use the Balance type in place of u64 to represent token values here. Although it is preferable that the Balance type be used with token values, I experienced some ambiguity working with the type, where the compiled contract did not like addition of u64 values to Balance values. It is conceivable that Balance will be enhanced in the future as Ink is further developed, providing more attributes that further represent a balance, such as the type of units. Balance will be implemented in the NFToken contract once the ambiguity surrounding its usage is cleared up.*
 
-We have also defined a private `deposit_event` function below our event definitions:
 
-```
-// Deposits an NFToken event.
-
-fn deposit_event(event: Event) {
-    env::deposit_raw_event(&event.encode()[..])
-}
-```
-
-This is just a convenience function that wraps Inks provided `deposit_raw_event` function, expecting an encoded event as its only argument.
-
-*__Note__: Notice there is no semi-colon after the `env::deposit_raw_event` function call? In Rust, omitting the semi-colon from the last expression of a function __returns__ the result of that expression, removing the need to write `return`, although it is perfectly valid to do so if you’d like to return further up the function.*
+*__Note__: In Rust, omitting the semi-colon from the last expression of a function __returns__ the result of that expression, removing the need to write `return`, although it is perfectly valid to do so if you’d like to return further up the function.*
 
 ### A note on Rust’s ownership mechanism
 
-Another important Rust (and therefore Ink) programming concept to understand is that of ownership. Our `deposit_event` function utilises ownership. Take a look at `&` used before the `event` argument in `env::deposit_raw_event`:
+Another important Rust (and therefore Ink) programming concept to understand is that of ownership. The `deposit_event` function (no longer implemented in NFToken) utilises ownership. Take a look at `&` used before the `event` argument in `env::deposit_raw_event`:
 
 ```
-env::deposit_raw_event(&event.encode()[..])
-                       ^
-                       we are referencing `event` here
+deposit_raw_event(&event.encode()[..])
+                  ^
+                  we are referencing `event` here
 ```
 
 In Rust, `&` represents a reference to an object.
@@ -501,16 +466,6 @@ To conclude `is_token_owner()`, we then check to see if the retrieved token owne
 }
 ```
 
-#### Back to minting implementation
-
-We have now covered the majority of `mint_impl()`. The last line of the function emits an event, which we have defined as a private function:
-
-```
-Self::emit_mint(receiver, *self.total_minted);
-```
-
-Our private event emitting functions simply check whether the values passed in are valid, via assertions, and then call the `deposit_event()` function we declared earlier.
-
 Our minting implementation has introduced us to the concepts and conventions used within the rest of the contract implementation. Let’s visit the transfer function text.
 
 ### Transferring Implementation
@@ -530,7 +485,7 @@ This function calls the private `transfer_impl()` function to carry out the actu
 * We immediately check if the caller is the token owner, and return false if not
 * The `id_to_token` mapping is updated, overwriting the value of the `token_id` index to the new owner’s account
 * Token counts are updated, decreasing the senders’ count and increasing the receivers’ count
-* The `Transfer` event is emitted via `emit_transfer()`
+* The `EventTransfer` event is emitted if `transfer_impl()` returns true
 
 Arguably a simpler function than the minting process, this transfer implementation allows tokens to be sent on an individual basis. The underlying mechanism here is simply to update the `id_to_owner` mapping, keeping track of who owns what. From here, the sender and receiver `owner_to_token_count` records are also updated to keep track of tokens owned on an individual account basis.
 
@@ -573,10 +528,10 @@ let approvals = self.approvals.get(&token_id);
 
 * __If an approval record does not exist__, we then refer to `approved` to see if the caller intended to either approve or disapprove the provided account. If the caller did wish to approve, the provided account is added to approvals. If not, there will be nothing to remove as the record was not found — we return false.
 * __If an approval record exists__, the value is unwrapped with `unwrap()`, and we again check the intention of the caller. If a disapproval was intended, we remove the record from `approvals` via the HashMap `remove()` method. On the other hand, we insert the record again, overwriting the existing record, in the event the caller intended to insert (or update) the approval.
-* Finally, the `Approval` event is emitted and we return `true`:
+* Finally, the `EventApproval` event is emitted and we return `true`:
 
 ```
-Self::emit_approval(&self, env.caller(), to, token_id, approved);
+env.emit(EventApproval { owner: env.caller(), spender: to, token_id: token_id, approved: approved });
 true
 ```
 
