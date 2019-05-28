@@ -5,39 +5,11 @@
 
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 
-use ink_core::{
-    env::{self, AccountId},
-    storage,
-};
+use ink_core::{env::AccountId, storage};
 use ink_lang::contract;
-use parity_codec::{Decode, Encode};
-
-/// Events deposited by the NFToken contract
-#[derive(Encode, Decode)]
-enum Event {
-    /// Emits when the owner of the contract mints tokens
-    Mint { owner: AccountId, value: u64 },
-    /// Emits when a transfer has been made.
-    Transfer {
-        from: Option<AccountId>,
-        to: Option<AccountId>,
-        token_id: u64,
-    },
-    /// Emits when an approved address for an NFT is changed or re-affirmed.
-    Approval {
-        owner: AccountId,
-        spender: AccountId,
-        token_id: u64,
-        approved: bool,
-    },
-}
-
-/// Deposits an NFToken event.
-fn deposit_event(event: Event) {
-    env::deposit_raw_event(&event.encode()[..])
-}
 
 contract! {
+
     /// Storage values of the contract
     struct NFToken {
         /// Owner of contract
@@ -66,6 +38,11 @@ contract! {
         }
     }
 
+    /// Events
+    event EventMint { owner: AccountId, value: u64 }
+    event EventTransfer { from: AccountId, to: AccountId, token_id: u64 }
+    event EventApproval { owner: AccountId, spender: AccountId, token_id: u64, approved: bool }
+
     /// Public methods
     impl NFToken {
 
@@ -80,7 +57,6 @@ contract! {
             }
             false
         }
-
 
         /// Return the total amount of tokens ever minted
         pub(external) fn total_minted(&self) -> u64 {
@@ -97,7 +73,11 @@ contract! {
         /// Transfers a token_id to a specified address from the caller
         pub(external) fn transfer(&mut self, to: AccountId, token_id: u64) -> bool {
             // carry out the actual transfer
-            self.transfer_impl(env.caller(), to, token_id)
+            if self.transfer_impl(env.caller(), to, token_id) == true {
+                env.emit(EventTransfer { from: env.caller(), to: to, token_id: token_id });
+                return true;
+            }
+            false
         }
 
         /// Transfers a token_id from a specified address to another specified address
@@ -105,6 +85,9 @@ contract! {
             // make the transfer immediately if caller is the owner
             if self.is_token_owner(&env.caller(), token_id) {
                 let result = self.transfer_impl(env.caller(), to, token_id);
+                if result == true {
+                    env.emit(EventTransfer { from: env.caller(), to: to, token_id: token_id });
+                }
                 return result;
 
             // not owner: check if caller is approved to move the token
@@ -118,6 +101,9 @@ contract! {
                 if *approval.unwrap() == env.caller() {
                     // carry out the actual transfer
                     let result = self.transfer_impl(env.caller(), to, token_id);
+                    if result == true {
+                        env.emit(EventTransfer { from: env.caller(), to: to, token_id: token_id });
+                    }
                     return result;
                 } else {
                     return false;
@@ -132,10 +118,14 @@ contract! {
             }
 
             // carry out the actual minting
-            self.mint_impl(to, value)
+            if self.mint_impl(to, value) == true {
+                env.emit(EventMint { owner: to, value: value });
+                return true;
+            }
+            false
         }
 
-         /// Approves or disapproves an Account to send token on behalf of an owner
+        /// Approves or disapproves an Account to send token on behalf of an owner
         pub(external) fn approval(&mut self, to: AccountId, token_id: u64, approved: bool) -> bool {
             // return if caller is not the token owner
             let token_owner = self.id_to_owner.get(&token_id);
@@ -172,52 +162,13 @@ contract! {
                 }
             }
 
-            Self::emit_approval(&self, env.caller(), to, token_id, approved);
+            env.emit(EventApproval { owner: env.caller(), spender: to, token_id: token_id, approved: approved });
             true
         }
     }
 
     /// Private Methods
     impl NFToken {
-
-        /// Emits a transfer event.
-        fn emit_transfer<F, T>(
-            from: F,
-            to: T,
-            token_id: u64,
-        )
-        where
-            F: Into<Option<AccountId>>,
-            T: Into<Option<AccountId>>,
-        {
-            let (from, to) = (from.into(), to.into());
-            assert!(from.is_some() || to.is_some());
-            assert_ne!(from, to);
-            assert!(token_id != 0);
-            deposit_event(Event::Transfer { from, to, token_id });
-        }
-
-        /// Emits a minting event
-        fn emit_mint(
-            owner: AccountId,
-            value: u64,
-        ) {
-            assert!(value > 0);
-            deposit_event(Event::Mint { owner, value });
-        }
-
-        /// Emits an approval event.
-        fn emit_approval(
-            &self,
-            owner: AccountId,
-            spender: AccountId,
-            token_id: u64,
-            approved: bool,
-        ) {
-            assert_ne!(owner, spender);
-            assert!(token_id > 0);
-            deposit_event(Event::Approval { owner, spender, token_id, approved });
-        }
 
         fn is_token_owner(&self, of: &AccountId, token_id: u64) -> bool {
             let owner = self.id_to_owner.get(&token_id);
@@ -245,8 +196,6 @@ contract! {
 
             self.owner_to_token_count.insert(from, from_owner_count - 1);
             self.owner_to_token_count.insert(to, to_owner_count + 1);
-
-            Self::emit_transfer(from, to, token_id);
             true
         }
 
@@ -267,8 +216,6 @@ contract! {
 
             // update total supply
             self.total_minted += value;
-
-            Self::emit_mint(receiver, *self.total_minted);
             true
         }
     }
